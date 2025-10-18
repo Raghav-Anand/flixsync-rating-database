@@ -1,0 +1,47 @@
+name: Deploy Infrastructure and Service
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AZURE_RESOURCE_GROUP: flixsync
+  AZURE_LOCATION: centralus
+  COSMOS_ACCOUNT_NAME: flixsync-cosmos
+  COSMOS_DATABASE_NAME: flixsync-rating-database
+
+jobs:
+  deploy-infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Database
+        run: |
+          az cosmosdb sql database create \
+            --account-name ${{ env.COSMOS_ACCOUNT_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.COSMOS_DATABASE_NAME }}
+
+      - name: Create Ratings Container
+        run: |
+          az cosmosdb sql container create \
+            --account-name ${{ env.COSMOS_ACCOUNT_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --database-name ${{ env.COSMOS_DATABASE_NAME }} \
+            --name ratings \
+            --partition-key-path "/userId"
+
+      - name: Get Connection String
+        run: |
+          CONNECTION_STRING=$(az cosmosdb keys list \
+            --name ${{ env.COSMOS_ACCOUNT_NAME }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --type connection-strings \
+            --query "connectionStrings[0].connectionString" -o tsv)
+          echo "::add-mask::$CONNECTION_STRING"
+          echo "COSMOS_CONNECTION_STRING=$CONNECTION_STRING" >> $GITHUB_ENV
